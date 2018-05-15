@@ -3,6 +3,10 @@ import copy
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 
+firstDraw = True
+drawNum = 0
+figs = set()
+
 class Node:
     def __init__(self, val, parent=None, id_num=-1):
         self.left = None
@@ -24,6 +28,9 @@ class BST:
         self.posys = {}
         self.message_nodes = set()
         self.root_nodes = set()
+        self.from_node_id = None
+        self.to_node_id = None
+        self.message_num = 0
 
     def insert(self, id_num, val):
         if id_num in self.node_id_to_val.keys():
@@ -110,10 +117,12 @@ class BST:
         rad = 1.5
         if node in self.message_nodes:
             ax.add_artist(plt.Circle((posx, posy), rad, color='red'))
+        elif node in self.root_nodes:
+            ax.add_artist(plt.Circle((posx, posy), rad, color='blue'))
         else:
             ax.add_artist(plt.Circle((posx, posy), rad, color='white'))
         ax.add_artist(plt.Circle((posx, posy), rad, color='black',linewidth=1, fill=None))
-        #ax.text(posx, posy, str(node.id_num), fontsize=30, ha='center', va='center')
+        #ax.text(posx, posy, str(node.id_num), fontsize=20, ha='center', va='center')
         ax.text(posx, posy, "id:" + str(node.id_num), fontsize=15, ha='center', va='bottom')
         ax.text(posx, posy, "val:" + str(node.val), fontsize=15, ha='center', va='top')
         self.posxs[node] = posx
@@ -128,49 +137,87 @@ class BST:
 
     def draw_tree(self):
         fig, ax = plt.subplots()
+        if self.from_node_id is not None:
+            ax.text(-40, 0, "Message #" + str(self.message_num), fontsize=20, ha='left', va='center')
+            ax.text(-40, 2, "From: " + str(self.from_node_id), fontsize=20, ha='left', va='center')
+        if self.to_node_id is not None:
+            ax.text(-40, 4, "To: " + str(self.to_node_id), fontsize=20, ha='left', va='center')
         self._draw_tree(self.root, 0.0, 0.0, fig, ax, 16)
         ax.set_xlim(-50, 50)
-        ax.set_ylim(40, -2)
+        ax.set_ylim(50, -2)
+
         plt.gca().set_aspect('equal', adjustable='box')
         plt.axis('off')
         fig.axes[0].get_xaxis().set_visible(False)
         fig.axes[0].get_yaxis().set_visible(False)
         mng = plt.get_current_fig_manager()
         mng.full_screen_toggle()
-        plt.draw()
-        plt.pause(0.1)  # <-------
-        plt.waitforbuttonpress(0)
-        #raw_input("<Hit Enter To Close>")
-        #plt.close(fig)
-        #plt.show()
-        #raw_input("Press Enter to continue...")
+        global drawNum
+        drawNum += 1
+        if (drawNum % 5) == 3:
+            for x in figs:
+                plt.close(x)
+            figs.clear()
+
+        global firstDraw
+        if firstDraw:
+            plt.draw()
+            plt.pause(0.1)  # <-------
+            plt.waitforbuttonpress(0)
+            firstDraw = False
+            plt.close(fig)
+        else:
+        #plt.draw()
+        #plt.pause(0.1)
+            figs.add(fig)
+            plt.show(block=False)
+            raw_input("Press Enter to continue...")
+        # raw_input("<Hit Enter To Close>")
+        # plt.show()
 
     def send_message(self, from_node_id, to_node_id):
         new_root = self.get_lowest_common_ancestor(from_node_id, to_node_id)
         from_node = self.find_id(from_node_id)
         to_node = self.find_id(to_node_id)
+        communication_cost = self.get_distance(from_node_id, to_node_id)
+        self.root_nodes.clear()
         self.message_nodes.clear()
         self.message_nodes.add(from_node)
         self.message_nodes.add(to_node)
-        if detail_level >= 1:
+
+        self.message_num += 1
+        self.from_node_id = from_node_id
+        self.to_node_id = to_node_id
+
+        if detail_level >= 2:
             self.draw_tree()
-        #print new_root
+
+        self.root_nodes.clear()
+        self.root_nodes.add(new_root)
+        if detail_level >= 0.75:
+            bst.draw_tree()
+
         if new_root != to_node:
-            self.splay(from_node, new_root)
+            communication_cost += self.splay(from_node, new_root)
         elif to_node.val > from_node.val:
-            self.splay(from_node, to_node.left)
+            communication_cost += self.splay(from_node, to_node.left)
         else:
-            self.splay(from_node, to_node.right)
+            communication_cost += self.splay(from_node, to_node.right)
+
         if detail_level >= 1:
             self.draw_tree()
 
         if to_node.parent != from_node and from_node.parent != to_node:
             if to_node.val < from_node.val:
-                self.splay(to_node, from_node.left)
+                communication_cost += self.splay(to_node, from_node.left)
             else:
-                self.splay(to_node, from_node.right)
+                communication_cost += self.splay(to_node, from_node.right)
             if detail_level >= 1:
                 self.draw_tree()
+
+        if detail_level >= 0.75:
+            bst.draw_tree()
+        return communication_cost + 1
 
     def zig(self, node_a, node_b):
         if node_a == node_b.left:
@@ -264,35 +311,63 @@ class BST:
 
     def splay(self, node, root):
         root_par = root.parent
+        step_num = 0
         while node.parent != root and node.parent != root_par:
-            #print "what"
-            print node
+            step_num += 1
             par = node.parent
-            print par
             parpar = par.parent
             if (node == par.left and par == parpar.left) or (node == par.right and par == parpar.right):
-                #print "lel"
                 self.zigzig(node, par, parpar)
             else:
-                #print "lal"
                 self.zigzag(node, par, parpar)
         if node.parent == root:
-            print "yeah"
+            step_num += 1
             self.zig(node, root)
+        # print "Splay step num: " + str(step_num)
+        return step_num
+
+    def get_distance(self, from_node_id, to_node_id):
+        new_root = self.get_lowest_common_ancestor(from_node_id, to_node_id)
+        from_node = self.find_id(from_node_id)
+        to_node = self.find_id(to_node_id)
+        n = from_node
+        dist = 0
+        while n != new_root:
+            n = n.parent
+            dist += 1
+        n = to_node
+        while n != new_root:
+            n = n.parent
+            dist += 1
+        return dist
 
 
-detail_level = 2
+detail_level = 0.75
 with open('minta.json') as data_file:
     data = json.load(data_file)
 
 bst = BST()
+non_adjusting_bst = BST()
 nodes = data['Nodes']
 messages = data['Messages']
 for i in range(0, len(nodes)):
     bst.insert(i, nodes[i])
+    non_adjusting_bst.insert(i, nodes[i])
 
+if detail_level >= 0.5:
+    bst.draw_tree()
+
+adj_cost = 0
+non_adj_cost = 0
 for i in range(0, len(messages)):
-    bst.send_message(messages[i][0], messages[i][1])
+    adj_cost += bst.send_message(messages[i][0], messages[i][1])
+    non_adj_cost += non_adjusting_bst.get_distance(messages[i][0], messages[i][1])+1
+
+if detail_level >= 0.5:
+    bst.draw_tree()
+
+print("Self adjusting network communication cost: " + str(adj_cost))
+print("Static network communication cost: " + str(non_adj_cost))
     #bst.send_message(1, 3)
     #bst.send_message(4, 3)
     #bst.send_message(1, 3)
@@ -316,7 +391,7 @@ for i in range(0, len(messages)):
 #print(bst.findval(14))
 #bst.print_tree()
 #print(bst.find_id(0))
-bst.draw_tree()
+#bst.draw_tree()
 n1 = bst.find_id(10)
 n2 = bst.find_id(9)
 n3 = bst.find_id(1)
@@ -326,6 +401,4 @@ n3 = bst.find_id(1)
 #bst.splay(bst.find_id(10), bst.root)
 #bst.draw_tree()
 
-print("hello")
-#print(bst.get_lowest_common_ancestor(4, 2))
-#print(bst.collect_parents(bst.findval(14)))
+print("Finished")
